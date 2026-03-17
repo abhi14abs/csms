@@ -1,0 +1,116 @@
+/* Global Icon Hover Animations */
+
+/* The container for the icons */
+.icon-box {
+    position: relative;
+    width: 54px;
+    height: 54px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(4px);
+    transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+/* The icons themselves */
+.icon-main,
+.icon-hover {
+    position: absolute;
+    font-size: 26px;
+    transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Initial States */
+.icon-main {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+}
+
+.icon-hover {
+    transform: translateY(40px); /* Start from below */
+    opacity: 0;
+}
+
+/* Hover States - Triggered when the parent card is hovered */
+/* We use a general class or specific card class to trigger this */
+
+/* Default trigger: hover on .icon-box itself OR on a parent .kpi-card */
+.kpi-card:hover .icon-main,
+.icon-box:hover .icon-main {
+    transform: translateY(-40px); /* Go up */
+    opacity: 0;
+}
+
+.kpi-card:hover .icon-hover,
+.icon-box:hover .icon-hover {
+    transform: translateY(0); /* Come up to center */
+    opacity: 1;
+}
+
+/* Optional: rotate on hover for extra flair */
+.kpi-card:hover .icon-box {
+    transform: scale(1.1);
+}
+
+/* Pulse animation for important alerts/badges if needed */
+.pulse-animation {
+    animation: pulse-red 2s infinite;
+}
+
+/* Gradient Variants for KPI Cards */
+.card-savings {
+    background: linear-gradient(135deg, #1ee0ac 0%, #0fac81 100%) !important;
+    color: #fff !important;
+}
+
+.card-shares {
+    background: linear-gradient(135deg, #7c8bff 0%, #5264ed 100%) !important;
+    color: #fff !important;
+}
+
+.card-fd {
+    background: linear-gradient(135deg, #f9db7a 0%, #f4bd0e 100%) !important;
+    color: #854d0e !important;
+}
+
+.card-exposure {
+    background: linear-gradient(135deg, #ff8081 0%, #ff5c5d 100%) !important;
+    color: #fff !important;
+}
+
+/* Contrast for yellowish FD card */
+.card-fd .card-title {
+    color: rgba(133, 77, 14, 0.8) !important;
+}
+
+.card-fd .icon-box {
+    background: rgba(0, 0, 0, 0.1) !important;
+    color: #854d0e !important;
+}
+
+.card-savings .card-title,
+.card-shares .card-title,
+.card-exposure .card-title {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.kpi-card .amount {
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes pulse-red {
+    0% {
+        box-shadow: 0 0 0 0 rgba(238, 82, 83, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(238, 82, 83, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(238, 82, 83, 0);
+    }
+}

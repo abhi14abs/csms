@@ -1,0 +1,110 @@
+/* theme-override.css */
+:root {
+  /* Override primary colors with your gradient theme */
+  --bs-primary: #4e54c8;
+  --bs-primary-rgb: 78, 84, 200;
+  --bs-purple: #8f94fb;
+  
+  /* Gradient variables */
+  --theme-gradient: linear-gradient(135deg, #4e54c8, #8f94fb);
+  --theme-gradient-light: linear-gradient(135deg, #6a6fd1, #a5a8ff);
+}
+
+/* Apply gradient to main background */
+body {
+  background: var(--theme-gradient) !important;
+  min-height: 100vh;
+}
+
+/* Update login container to match your design */
+.login-container {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 40px;
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 1s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Update primary buttons */
+.btn-primary {
+  background: var(--theme-gradient);
+  border: none;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+  transform: scale(1.03);
+  background: var(--theme-gradient-light);
+}
+
+/* Update cards to use glass morphism */
+.card {
+  background: rgba(255, 255, 255, 0.15) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 15px;
+}
+
+/* Update navbar */
+.navbar {
+  background: rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Update sidebar */
+.sidebar {
+  background: rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(10px);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Form controls */
+.form-control {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  border-radius: 10px;
+}
+
+.form-control:focus {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+/* Update text colors for better contrast */
+.text-primary {
+  color: #fff !important;
+}
+
+.text-muted {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* Table styling */
+.table {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.table th {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Badges */
+.badge.bg-primary {
+  background: var(--theme-gradient) !important;
+}
