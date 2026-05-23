@@ -29,21 +29,50 @@ class AdminController extends Controller
         // Ensure month is 2 digits for consistency (e.g. '03' instead of '3')
         $month = sprintf('%02d', $month);
 
-        // Use createFromDate with day=1 to avoid overflow issues (e.g. today is 31st and selecting Feb)
+        // Total Employees vs Society Members
+        $totalEmployees = Employee::withoutGlobalScope('society_member')->count();
+        $totalSocietyMembers = Employee::withoutGlobalScope('society_member')->where('is_society_member', 'YES')->count();
+
+        // Target Date
         $targetDate = Carbon::createFromDate($year, $month, 1)->endOfMonth();
 
         // Society Members Only (is_society_member = YES)
-        // Employee Global Scope handles this if it's already there, but let's be explicit
-        $members = Employee::where('is_society_member', 'YES')->get();
+        $members = Employee::withoutGlobalScope('society_member')->where('is_society_member', 'YES')->get();
         $memberIds = $members->pluck('id');
 
-        // Metrics logic
-        $totalSavings = $this->getHistoricalTotal($memberIds, 'SAVINGS', $targetDate);
-        $totalShares = $this->getHistoricalTotal($memberIds, 'SHARE', $targetDate);
-        $totalFD = $this->getHistoricalTotal($memberIds, 'FD', $targetDate);
-        $loanExposure = $this->getHistoricalTotal($memberIds, 'LOAN', $targetDate);
+        // Current Month Metrics
+        $savingsData = $this->getHistoricalTotal($memberIds, 'SAVINGS', $targetDate);
+        $totalSavings = $savingsData['total'];
+        $savingsCount = $savingsData['count'];
+
+        $sharesData = $this->getHistoricalTotal($memberIds, 'SHARE', $targetDate);
+        $totalShares = $sharesData['total'];
+        $sharesCount = $sharesData['count'];
+
+        $fdData = $this->getHistoricalTotal($memberIds, 'FD', $targetDate);
+        $totalFD = $fdData['total'];
+        $fdCount = $fdData['count'];
+
+        $loanData = $this->getHistoricalTotal($memberIds, 'LOAN', $targetDate);
+        $loanExposure = $loanData['total'];
+        $loanCount = $loanData['count'];
 
         $totalAssets = $totalSavings + $totalShares + $totalFD;
+
+        // Last Month Metrics
+        $lastMonthTarget = Carbon::createFromDate($year, $month, 1)->subMonth()->endOfMonth();
+
+        $lastSavingsData = $this->getHistoricalTotal($memberIds, 'SAVINGS', $lastMonthTarget);
+        $lastTotalSavings = $lastSavingsData['total'];
+
+        $lastSharesData = $this->getHistoricalTotal($memberIds, 'SHARE', $lastMonthTarget);
+        $lastTotalShares = $lastSharesData['total'];
+
+        $lastFdData = $this->getHistoricalTotal($memberIds, 'FD', $lastMonthTarget);
+        $lastTotalFD = $lastFdData['total'];
+
+        $lastLoanData = $this->getHistoricalTotal($memberIds, 'LOAN', $lastMonthTarget);
+        $lastLoanExposure = $lastLoanData['total'];
 
         // Refined Hold Logic: Loan Hold is 10% of Total Exposure
         $amountOnHold = $loanExposure * 0.10;
@@ -59,11 +88,21 @@ class AdminController extends Controller
         return view('admin.dashboard', compact(
             'year',
             'month',
+            'totalEmployees',
+            'totalSocietyMembers',
             'totalSavings',
+            'savingsCount',
+            'lastTotalSavings',
             'totalShares',
+            'sharesCount',
+            'lastTotalShares',
             'totalFD',
-            'amountOnHold',
+            'fdCount',
+            'lastTotalFD',
             'loanExposure',
+            'loanCount',
+            'lastLoanExposure',
+            'amountOnHold',
             'bankHold',
             'finalWithdrawable'
         ));
@@ -77,6 +116,7 @@ class AdminController extends Controller
             ->get();
 
         $totalBalance = 0;
+        $activeAccountCount = 0;
 
         foreach ($accounts as $account) {
             // Find current balance
@@ -96,10 +136,16 @@ class AdminController extends Controller
                 }
             }
 
-            $totalBalance += $currentVal;
+            if ($currentVal > 0) {
+                $totalBalance += $currentVal;
+                $activeAccountCount++;
+            }
         }
 
-        return $totalBalance;
+        return [
+            'total' => $totalBalance,
+            'count' => $activeAccountCount
+        ];
     }
 
     public function monthlyDueReport()
@@ -112,12 +158,20 @@ class AdminController extends Controller
             ->get();
 
         $reportData = [];
+        $total_subscription = 0;
+        $total_emi = 0;
+        $total_deduction = 0;
+
         foreach ($members as $member) {
             $shareAccount = $member->accounts->where('account_type', 'SHARE')->first();
             $savingsAccount = $member->accounts->where('account_type', 'SAVINGS')->first();
             $loanAccount = $member->accounts->where('account_type', 'LOAN')->first();
 
-            $subscriptionAmount = 2000;
+            $subscriptionAmount = 0;
+            if ($member->is_society_member === 'YES') {
+                $subscriptionAmount = (int) ($member->monthly_subscription ?? 2000);
+            }
+
             $emiAmount = 0;
             $loanBalance = 0;
 
@@ -126,18 +180,71 @@ class AdminController extends Controller
                 $loanBalance = $loanAccount->current_balance;
             }
 
+            $total_subscription += $subscriptionAmount;
+            $total_emi += $emiAmount;
+            $total_deduction += ($subscriptionAmount + $emiAmount);
+
             $reportData[] = [
+                'id' => $member->id,
                 'empCode' => $member->empCode,
                 'name' => $member->name,
                 'subscription' => $subscriptionAmount,
                 'emi' => $emiAmount,
                 'total_deduction' => $subscriptionAmount + $emiAmount,
                 'loan_balance' => $loanBalance,
-                'remarks' => $loanBalance > 0 ? 'Active Loan' : 'No Loan'
+                'remarks' => $loanBalance > 0 ? 'Active Loan' : 'No Loan',
+                'is_society_member' => $member->is_society_member
             ];
         }
 
-        return view('admin.monthly-due-report', compact('reportData'));
+        // Last month data comparison
+        $lastMonth = Carbon::now()->subMonth();
+        $last_month_subscription = DB::table('transactions')
+            ->where('category', 'SUBSCRIPTION')
+            ->whereMonth('tx_date', $lastMonth->month)
+            ->whereYear('tx_date', $lastMonth->year)
+            ->sum('amount');
+
+        $last_month_emi = DB::table('transactions')
+            ->where('category', 'EMI')
+            ->whereMonth('tx_date', $lastMonth->month)
+            ->whereYear('tx_date', $lastMonth->year)
+            ->sum('amount');
+
+        $last_month_deduction = $last_month_subscription + $last_month_emi;
+
+        return view('admin.monthly-due-report', compact(
+            'reportData',
+            'total_subscription',
+            'total_emi',
+            'total_deduction',
+            'last_month_subscription',
+            'last_month_emi',
+            'last_month_deduction'
+        ));
+    }
+
+    public function updateMonthlySubscription(Request $request)
+    {
+        $request->validate([
+            'employee_id' => 'required|exists:employees,id',
+            'subscription' => 'required|integer|min:0'
+        ]);
+
+        if ($request->subscription > 0 && $request->subscription % 1000 !== 0) {
+            return response()->json(['success' => false, 'message' => 'Subscription must be a multiple of 1000']);
+        }
+
+        $member = Employee::findOrFail($request->employee_id);
+
+        if ($member->is_society_member !== 'YES') {
+            return response()->json(['success' => false, 'message' => 'Only society members are liable to pay share/saving subscription']);
+        }
+
+        $member->monthly_subscription = $request->subscription;
+        $member->save();
+
+        return response()->json(['success' => true, 'message' => 'Subscription updated successfully']);
     }
 
     public function showBatchForm()
@@ -193,9 +300,14 @@ class AdminController extends Controller
                     $emiAmount = $loanAccount->loanAttributes->emi_amount;
                 }
 
+                $subscriptionAmount = 0;
+                if ($member->is_society_member === 'YES') {
+                    $subscriptionAmount = (int) ($member->monthly_subscription ?? 2000);
+                }
+
                 $result = $this->financialService->processMonthlySubscription(
                     $member,
-                    2000,
+                    $subscriptionAmount,
                     $emiAmount,
                     $transactionDate
                 );
@@ -358,6 +470,102 @@ class AdminController extends Controller
         return view('admin.batch-results', compact('results'));
     }
 
+    public function showHistoricalImportForm()
+    {
+        return view('admin.historical-import');
+    }
+
+    public function processHistoricalExcel(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv',
+            'month' => 'required|integer|min:1|max:12',
+            'year' => 'required|integer|min:2000|max:' . (date('Y') + 1),
+        ]);
+
+        $file = $request->file('file');
+
+        $transactionDate = Carbon::create($request->year, $request->month, 1)->endOfMonth();
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getRealPath());
+        } catch (\Exception $e) {
+            return redirect()->back()->with(['type' => 'error', 'message' => 'Error loading file: ' . $e->getMessage()]);
+        }
+
+        $sheet = $spreadsheet->getActiveSheet();
+        $excelData = $sheet->toArray(null, true, true, false);
+
+        if (empty($excelData)) {
+            return redirect()->back()->with(['type' => 'error', 'message' => 'The uploaded file is empty.']);
+        }
+
+        $header = array_shift($excelData);
+
+        // Find necessary column indexes
+        $empCol = -1;
+        $shareCol = -1;
+        $emiCol = -1;
+
+        foreach ($header as $index => $colName) {
+            if (!$colName) continue;
+            $lower = strtolower(trim($colName));
+            if (str_contains($lower, 'emp no') || str_contains($lower, 'empcode') || str_contains($lower, 'emp code')) {
+                $empCol = $index;
+            } elseif (str_contains($lower, 'share')) {
+                $shareCol = $index;
+            } elseif (str_contains($lower, 'emi')) {
+                $emiCol = $index;
+            }
+        }
+
+        if ($empCol === -1) {
+            return redirect()->back()->with(['type' => 'error', 'message' => 'Could not find Employee Number column (Emp No. or EmpCode).']);
+        }
+
+        $results = [];
+
+        foreach ($excelData as $row) {
+            if (empty(array_filter($row))) continue;
+
+            $empCode = $row[$empCol] ?? null;
+            if (!$empCode) continue;
+
+            // Clean up empCode
+            $empCode = trim($empCode);
+
+            $shareAmount = $shareCol !== -1 ? (float)str_replace(',', '', $row[$shareCol] ?? 0) : 0;
+            $emiAmount = $emiCol !== -1 ? (float)str_replace(',', '', $row[$emiCol] ?? 0) : 0;
+
+            if ($shareAmount <= 0 && $emiAmount <= 0) {
+                continue;
+            }
+
+            $member = Employee::withoutGlobalScope('society_member')->where('empCode', $empCode)->first();
+            if (!$member) {
+                $results[] = [
+                    'member' => $empCode . ' (Not Found)',
+                    'success' => false,
+                    'message' => 'Employee Code not found in database.'
+                ];
+                continue;
+            }
+
+            $rowResult = $this->financialService->processHistoricalRow($member, [
+                'share_amount' => $shareAmount,
+                'emi_amount' => $emiAmount
+            ], $transactionDate);
+
+            $results[] = [
+                'member' => $member->name . ' (' . $member->empCode . ')',
+                'success' => $rowResult['success'],
+                'message' => $rowResult['message'] ?? 'Historical processing successful'
+            ];
+        }
+
+        return view('admin.batch-results', compact('results'));
+    }
+
     public function pendingLoans()
     {
         $pendingLoans = Account::where('account_type', 'LOAN')
@@ -405,6 +613,70 @@ class AdminController extends Controller
         session()->flash('type', 'success');
         session()->flash('message', 'Member created');
         return redirect()->route('admin.members.index');
+    }
+
+    public function showMember($id)
+    {
+        $member = Employee::with(['accounts.loanAttributes', 'accounts.payments'])->findOrFail($id);
+
+        $shareAccount = $member->accounts->where('account_type', 'SHARE')->first();
+        $savingsAccount = $member->accounts->where('account_type', 'SAVINGS')->first();
+        $fdAccount = $member->accounts->where('account_type', 'FD')->first();
+
+        $loanAccount = $member->accounts
+            ->where('account_type', 'LOAN')
+            ->where('status', 'Active')
+            ->first();
+
+        $totalAssets = ($shareAccount->current_balance ?? 0) + ($savingsAccount->current_balance ?? 0) + ($fdAccount->current_balance ?? 0);
+
+        $accountIds = $member->accounts->pluck('account_id')->toArray();
+        $recentTransactions = Transaction::whereIn('account_id', $accountIds)
+            ->orderBy('created_at', 'desc')
+            ->orderBy('tx_id', 'desc')
+            ->take(50)
+            ->get();
+
+        $repaidPercentage = 0;
+        $totalPaid = 0;
+        $totalPending = 0;
+        $individualHold = 0;
+
+        if ($loanAccount && $loanAccount->loanAttributes) {
+            $principal = $loanAccount->loanAttributes->principal_amount;
+            $outstanding = $loanAccount->current_balance;
+            $totalPaid = $loanAccount->payments()->sum('amount_paid');
+            $totalPending = $outstanding;
+            $repaidPercentage = $principal > 0 ? (($principal - $outstanding) / $principal) * 100 : 0;
+
+            // Individual Hold: 10% of Loan Principal
+            $individualHold = $principal * 0.10;
+        }
+
+        // Individual Bank Hold: 30% of Remaining Equity after Loan Hold
+        $remainingAfterLoanHold = max(0, $totalAssets - $individualHold);
+        // $individualBankHold = $remainingAfterLoanHold * 0.30;
+        $finalWithdrawable = $remainingAfterLoanHold;
+
+        $suretyCommitments = \App\Models\LoanSurety::where('employee_id', $member->id)
+            ->with('loan.employee')
+            ->get();
+
+        return view('admin.members.show', compact(
+            'member',
+            'shareAccount',
+            'savingsAccount',
+            'fdAccount',
+            'loanAccount',
+            'totalAssets',
+            'recentTransactions',
+            'repaidPercentage',
+            'totalPaid',
+            'totalPending',
+            'individualHold',
+            'finalWithdrawable',
+            'suretyCommitments'
+        ));
     }
 
     public function editMember($id)
@@ -496,84 +768,125 @@ class AdminController extends Controller
 
     public function approveLoan(Request $request, $loanId)
     {
-        $loan = Account::findOrFail($loanId);
         $remarks = $request->input('remarks');
 
-        // Basic checks before approval
-        $attr = $loan->loanAttributes;
-        $member = $loan->employee;
+        try {
+            $resultMessage = DB::transaction(function () use ($loanId, $remarks) {
+                $loan = Account::where('account_id', $loanId)->lockForUpdate()->firstOrFail();
+                $loan->load(['loanAttributes', 'employee']);
 
-        if (! $attr) {
+                if ($loan->status === 'Active') {
+                    $alreadyDisbursed = Transaction::where('account_id', $loan->account_id)
+                        ->where('category', 'DISBURSAL')
+                        ->exists();
+                    $hasSchedule = $loan->installments()->exists();
+
+                    if ($alreadyDisbursed || $hasSchedule) {
+                        return 'Loan was already approved earlier. No duplicate disbursal was created.';
+                    }
+                }
+
+                if ($loan->status !== 'Pending') {
+                    throw new \RuntimeException('Only pending loans can be approved.');
+                }
+
+                $attr = $loan->loanAttributes;
+                $member = $loan->employee;
+
+                if (! $attr) {
+                    throw new \RuntimeException('Loan attributes missing. Cannot approve.');
+                }
+
+                $suretyCount = $loan->sureties()->count();
+                if ($suretyCount < 3) {
+                    throw new \RuntimeException('Loan must have three sureties before approval.');
+                }
+
+                if (! $this->financialService->checkCollateral($member, $attr->principal_amount)) {
+                    throw new \RuntimeException('Insufficient collateral (10% required). Cannot approve loan.');
+                }
+
+                $loan->status = 'Active';
+                $loan->save();
+
+                $app = \App\Models\LoanApplication::where('app_account_id', $loan->account_id)->lockForUpdate()->first();
+                if ($app) {
+                    $app->status = 'approved';
+                    $app->admin_remarks = $remarks;
+                    $app->save();
+                }
+
+                if (! $attr->disbursal_date) {
+                    $attr->disbursal_date = Carbon::now();
+                    $attr->save();
+                }
+
+                $hasDisbursal = Transaction::where('account_id', $loan->account_id)
+                    ->where('category', 'DISBURSAL')
+                    ->exists();
+
+                if (! $hasDisbursal) {
+                    Transaction::create([
+                        'account_id' => $loan->account_id,
+                        'amount' => $attr->principal_amount,
+                        'tx_type' => 'DEBIT',
+                        'category' => 'DISBURSAL',
+                        'description' => 'Loan disbursed',
+                        'tx_date' => Carbon::now()
+                    ]);
+                }
+
+                if (! $loan->installments()->exists()) {
+                    app(\App\Services\LoanService::class)->generateAmortizationSchedule($loan);
+                }
+
+                return 'Loan approved and disbursed successfully';
+            });
+
+            session()->flash('type', 'success');
+            session()->flash('message', $resultMessage);
+        } catch (\Throwable $e) {
             session()->flash('type', 'error');
-            session()->flash('message', 'Loan attributes missing. Cannot approve.');
-            return redirect()->route('admin.pending-loans');
+            session()->flash('message', $e->getMessage());
         }
 
-        // ensure there are three sureties
-        $suretyCount = $loan->sureties()->count();
-        if ($suretyCount < 3) {
-            session()->flash('type', 'error');
-            session()->flash('message', 'Loan must have three sureties before approval.');
-            return redirect()->route('admin.pending-loans');
-        }
-
-        // Check collateral (10% rule) at approval time
-        if (! $this->financialService->checkCollateral($member, $attr->principal_amount)) {
-            session()->flash('type', 'error');
-            session()->flash('message', 'Insufficient collateral (10% required). Cannot approve loan.');
-            return redirect()->route('admin.pending-loans');
-        }
-
-        // Approve and disburse
-        $loan->status = 'Active';
-        $loan->save();
-
-        $app = \App\Models\LoanApplication::where('app_account_id', $loan->account_id)->first();
-        if ($app) {
-            $app->status = 'approved';
-            $app->admin_remarks = $remarks;
-            $app->save();
-        }
-
-        if (! $attr->disbursal_date) {
-            $attr->disbursal_date = Carbon::now();
-            $attr->save();
-        }
-
-        Transaction::create([
-            'account_id' => $loan->account_id,
-            'amount' => $attr->principal_amount,
-            'tx_type' => 'DEBIT',
-            'category' => 'DISBURSAL',
-            'description' => 'Loan disbursed',
-            'tx_date' => Carbon::now()
-        ]);
-
-        // Generate the professional amortization schedule (Single Source of Truth)
-        app(\App\Services\LoanService::class)->generateAmortizationSchedule($loan);
-
-        session()->flash('type', 'success');
-        session()->flash('message', 'Loan approved and disbursed successfully');
         return redirect()->route('admin.pending-loans');
     }
 
     public function rejectLoan(Request $request, $loanId)
     {
-        $loan = Account::findOrFail($loanId);
         $remarks = $request->input('remarks');
 
-        $loan->status = 'Rejected';
-        $loan->save();
+        try {
+            DB::transaction(function () use ($loanId, $remarks) {
+                $loan = Account::where('account_id', $loanId)->lockForUpdate()->firstOrFail();
 
-        $app = \App\Models\LoanApplication::where('app_account_id', $loan->account_id)->first();
-        if ($app) {
-            $app->status = 'rejected';
-            $app->admin_remarks = $remarks;
-            $app->save();
+                if ($loan->status === 'Rejected') {
+                    return;
+                }
+
+                if ($loan->status !== 'Pending') {
+                    throw new \RuntimeException('Only pending loans can be rejected.');
+                }
+
+                $loan->status = 'Rejected';
+                $loan->save();
+
+                $app = \App\Models\LoanApplication::where('app_account_id', $loan->account_id)->lockForUpdate()->first();
+                if ($app) {
+                    $app->status = 'rejected';
+                    $app->admin_remarks = $remarks;
+                    $app->save();
+                }
+            });
+
+            session()->flash('type', 'success');
+            session()->flash('message', 'Loan rejected');
+        } catch (\Throwable $e) {
+            session()->flash('type', 'error');
+            session()->flash('message', $e->getMessage());
         }
 
-        session()->flash('type', 'success');
-        session()->flash('message', 'Loan rejected');
         return redirect()->route('admin.pending-loans');
     }
 

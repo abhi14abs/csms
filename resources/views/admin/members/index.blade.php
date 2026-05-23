@@ -30,7 +30,12 @@
                             <tr>
                                 <td>{{ $key + 1 }}</td>
                                 <td>{{ $m->empCode }}</td>
-                                <td>{{ $m->name }}</td>
+                                <td>
+                                    {{ $m->name }}
+                                    @if($m->retirement_flag)
+                                        <br><span class="badge bg-{{ $m->retirement_flag['type'] }} mt-1" style="font-size: 10px;">{{ $m->retirement_flag['text'] }}</span>
+                                    @endif
+                                </td>
                                 {{-- <td></td> --}}
                                 <td>{{ $m->mobile }}</td>
                                 <td>{{ $m->email }}</td>
@@ -39,6 +44,8 @@
                                 <td>{{ $m->nominee->name ?? 'N/A' }}</td>
                                 <td>{{ $m->status }}</td>
                                 <td>
+                                    <a href="{{ route('admin.members.show', $m->id) }}"
+                                        class="btn btn-sm btn-outline-info">View</a>
                                     <a href="{{ route('admin.members.edit', $m->id) }}"
                                         class="btn btn-sm btn-outline-success">Edit</a>
                                     <a href="{{ route('admin.members.fd.create', $m->id) }}"

@@ -69,6 +69,22 @@
                     box-shadow: 0 0 0 0 rgba(238, 82, 83, 0);
                 }
             }
+
+            .trend-indicator {
+                font-size: 0.85rem;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                margin-top: 8px;
+            }
+
+            .trend-up {
+                color: #1ee0ac;
+            }
+
+            .trend-down {
+                color: #e85347;
+            }
         </style>
     @endpush
 
@@ -78,6 +94,15 @@
                 <h3 class="nk-block-title page-title">Dashboard</h3>
                 <div class="nk-block-des text-soft">
                     <p>Welcome to Society Management System. Financial summary for active members.</p>
+                    <div class="mt-2 text-dark fw-bold">
+                        <span class="badge badge-dim bg-primary rounded-pill">Total Employees:
+                            {{ $totalEmployees ?? 0 }}</span>
+                        <span class="badge badge-dim bg-secondary rounded-pill">
+                            <a href="{{ route('admin.members.index') }}" class="text-dark text-decoration-none">
+                                Society Members: {{ $totalSocietyMembers ?? 0 }}
+                            </a>
+                        </span>
+                    </div>
                 </div>
             </div>
             <div class="nk-block-head-content">
@@ -129,6 +154,16 @@
                                 <em class="icon ni ni-coins icon-hover"></em>
                             </div>
                         </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div
+                                class="trend-indicator mt-0 {{ $totalSavings >= ($lastTotalSavings ?? 0) ? 'trend-up' : 'trend-down' }}">
+                                <em
+                                    class="icon ni ni-arrow-long-{{ $totalSavings >= ($lastTotalSavings ?? 0) ? 'up' : 'down' }}"></em>
+                                <span>vs last month (₹ {{ number_format($lastTotalSavings ?? 0, 2) }})</span>
+                            </div>
+                            <div class="text-hard ms-2" style="font-size: 0.85rem; white-space: nowrap;">
+                                {{ $savingsCount ?? 0 }} Accounts</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -147,6 +182,16 @@
                                 <em class="icon ni ni-wallet-in icon-main"></em>
                                 <em class="icon ni ni-user-list-fill icon-hover"></em>
                             </div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div
+                                class="trend-indicator mt-0 {{ $totalShares >= ($lastTotalShares ?? 0) ? 'trend-up' : 'trend-down' }}">
+                                <em
+                                    class="icon ni ni-arrow-long-{{ $totalShares >= ($lastTotalShares ?? 0) ? 'up' : 'down' }}"></em>
+                                <span>vs last month (₹ {{ number_format($lastTotalShares ?? 0, 2) }})</span>
+                            </div>
+                            <div class="text-hard ms-2" style="font-size: 0.85rem; white-space: nowrap;">
+                                {{ $sharesCount ?? 0 }} Accounts</div>
                         </div>
                     </div>
                 </div>
@@ -167,6 +212,16 @@
                                 <em class="icon ni ni-wallet-saving icon-hover"></em>
                             </div>
                         </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div
+                                class="trend-indicator mt-0 {{ $totalFD >= ($lastTotalFD ?? 0) ? 'trend-up' : 'trend-down' }}">
+                                <em
+                                    class="icon ni ni-arrow-long-{{ $totalFD >= ($lastTotalFD ?? 0) ? 'up' : 'down' }}"></em>
+                                <span>vs last month (₹ {{ number_format($lastTotalFD ?? 0, 2) }})</span>
+                            </div>
+                            <div class="text-hard ms-2" style="font-size: 0.85rem; white-space: nowrap;">
+                                {{ $fdCount ?? 0 }} Accounts</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -185,6 +240,19 @@
                                 <em class="icon ni ni-wallet-out icon-main"></em>
                                 <em class="icon ni ni-money icon-hover"></em>
                             </div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div
+                                class="trend-indicator mt-0 {{ $loanExposure > ($lastLoanExposure ?? 0) ? 'trend-up' : ($loanExposure < ($lastLoanExposure ?? 0) ? 'trend-down' : '') }}">
+                                @if ($loanExposure > ($lastLoanExposure ?? 0))
+                                    <em class="icon ni ni-arrow-long-up"></em>
+                                @elseif($loanExposure < ($lastLoanExposure ?? 0))
+                                    <em class="icon ni ni-arrow-long-down"></em>
+                                @endif
+                                <span>vs last month (₹ {{ number_format($lastLoanExposure ?? 0, 2) }})</span>
+                            </div>
+                            <div class="text-hard ms-2" style="font-size: 0.85rem; white-space: nowrap;">
+                                {{ $loanCount ?? 0 }} Loans</div>
                         </div>
                     </div>
                 </div>
@@ -208,7 +276,7 @@
                             <span class="amount text-dark" style="font-size: 1.8rem;">₹
                                 {{ number_format($amountOnHold, 2) }}</span>
                         </div>
-                        <div class="alert alert-danger mt-3 mb-0 py-2 border-0 bg-danger-dim">
+                        <div class="alert alert-danger mt-3 mb-0 py-2 border-0 bg-danger-dim rounded-pill">
                             <p class="small mb-0"><em class="icon ni ni-info-fill me-1"></em> Security hold against member
                                 equity.</p>
                         </div>
@@ -233,7 +301,7 @@
                             <span class="amount text-dark" style="font-size: 1.8rem;">₹
                                 {{ number_format($bankHold, 2) }}</span>
                         </div>
-                        <div class="alert alert-warning mt-3 mb-0 py-2 border-0 bg-warning-dim">
+                        <div class="alert alert-warning mt-3 mb-0 py-2 border-0 bg-warning-dim rounded-pill">
                             <p class="small mb-0"><em class="icon ni ni-shield-check-fill me-1"></em> Mandatory liquidity
                                 reserve.</p>
                         </div>
@@ -257,9 +325,9 @@
                                             <h5 class="title text-primary">Withdrawable Capital
                                                 Analysis</h5>
                                             <p class="text-soft">Hold Utilization Priority: <span
-                                                    class="badge badge-dim bg-info">1. Shares</span> <em
+                                                    class="badge badge-dim bg-info rounded-pill">1. Shares</span> <em
                                                     class="icon ni ni-arrow-right"></em> <span
-                                                    class="badge badge-dim bg-primary">2. Savings</span></p>
+                                                    class="badge badge-dim bg-primary rounded-pill">2. Savings</span></p>
                                         </div>
                                     </div>
                                 </div>
@@ -297,7 +365,8 @@
                                         Withdrawable Amount</div>
                                     <div class="d-flex align-items-center">
                                         <div class="h3 mb-0 me-3">₹ {{ number_format($finalWithdrawable, 2) }}</div>
-                                        <div class="badge badge-pill bg-white text-primary">Live Liquidity</div>
+                                        <div class="badge bg-white text-primary rounded-pill">Live Liquidity
+                                        </div>
                                     </div>
                                 </div>
                             </div>

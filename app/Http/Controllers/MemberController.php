@@ -11,6 +11,7 @@ use App\Services\FinancialService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class MemberController extends Controller
 {
@@ -23,15 +24,7 @@ class MemberController extends Controller
 
     public function dashboard()
     {
-        // Support both authenticated and demo mode: fall back to first Member if no auth scaffolding is present
-        if (Auth::check()) {
-            $member = Auth::user()->employee;
-        } else {
-            $member = Employee::first();
-        }
-        if (!$member) {
-            abort(404, 'No member found. Run the seeder.');
-        }
+        $member = $this->resolveAuthenticatedMember();
 
         $shareAccount = $member->accounts()->where('account_type', 'SHARE')->first();
         $savingsAccount = $member->accounts()->where('account_type', 'SAVINGS')->first();
@@ -55,6 +48,7 @@ class MemberController extends Controller
         $totalPaid = 0;
         $totalPending = 0;
         $individualHold = 0;
+        $topUpEligible = false;
 
         if ($loanAccount && $loanAccount->loanAttributes) {
             $principal = $loanAccount->loanAttributes->principal_amount;
@@ -97,14 +91,8 @@ class MemberController extends Controller
 
     public function showLoanApplication()
     {
-        if (Auth::check()) {
-            $member = Auth::user()->employee;
-            if ($member) {
-                $member->load(['designation', 'department']);
-            }
-        } else {
-            $member = Employee::with(['designation', 'department'])->first();
-        }
+        $member = $this->resolveAuthenticatedMember();
+        $member->load(['designation', 'department']);
 
         $hasActiveLoan = $member->accounts()
             ->where('account_type', 'LOAN')
@@ -134,11 +122,7 @@ class MemberController extends Controller
 
     public function showTopupApplication()
     {
-        if (Auth::check()) {
-            $member = Auth::user()->employee;
-        } else {
-            $member = Employee::first();
-        }
+        $member = $this->resolveAuthenticatedMember();
         $loanAccount = $member->accounts()->where('account_type', 'LOAN')->where('status', 'Active')->first();
 
         if (!$loanAccount) {
@@ -156,11 +140,7 @@ class MemberController extends Controller
             'new_amount' => 'required|numeric|min:1000|max:800000'
         ]);
 
-        if (Auth::check()) {
-            $member = Auth::user()->employee;
-        } else {
-            $member = Employee::first();
-        }
+        $member = $this->resolveAuthenticatedMember();
 
         $result = $this->financialService->processTopUp($member, (float)$request->input('new_amount'));
         if ($result['success']) {
@@ -195,11 +175,7 @@ class MemberController extends Controller
             'loan_outstanding' => 'nullable|numeric'
         ]);
 
-        if (Auth::check()) {
-            $member = Auth::user()->employee;
-        } else {
-            $member = Employee::first();
-        }
+        $member = $this->resolveAuthenticatedMember();
 
         try {
             // Persist the application details for auditing and review
@@ -277,5 +253,22 @@ class MemberController extends Controller
             session()->flash('message', 'An unexpected error occurred while processing your application. Please try again.');
             return back()->withInput();
         }
+    }
+
+    private function resolveAuthenticatedMember(): Employee
+    {
+        $user = Auth::user();
+
+        if (! $user) {
+            throw new HttpException(401, 'Authentication required.');
+        }
+
+        $member = $user->employee;
+
+        if (! $member) {
+            throw new HttpException(403, 'No employee profile is linked to this account.');
+        }
+
+        return $member;
     }
 }

@@ -25,8 +25,8 @@ class LoanService
         $currentDate = $startDate ? Carbon::parse($startDate) : Carbon::parse($attr->start_date ?? $attr->disbursal_date ?? now());
 
         for ($i = $startInstallmentNo; $i <= $attr->tenure_months; $i++) {
-            $interest = round($balance * $monthlyInterestRate, 2);
-            $principalComponent = round($emi - $interest, 2);
+            $interest = round($balance * $monthlyInterestRate);
+            $principalComponent = round($emi - $interest);
 
             // Adjust last installment for rounding differences
             if ($i == $attr->tenure_months) {
@@ -35,7 +35,7 @@ class LoanService
             }
 
             $balance -= $principalComponent;
-            $balance = round($balance, 2);
+            $balance = round($balance);
 
             LoanInstallment::create([
                 'loan_id' => $loan->account_id,
@@ -43,7 +43,7 @@ class LoanService
                 'due_date' => $currentDate->copy()->addMonths($i - $startInstallmentNo)->format('Y-m-d'),
                 'principal_due' => $principalComponent,
                 'interest_due' => $interest,
-                'total_due' => round($principalComponent + $interest, 2),
+                'total_due' => round($principalComponent + $interest),
                 'balance_after' => abs($balance), // Ensure no negative -0.00
                 'status' => 'pending',
             ]);
@@ -60,6 +60,7 @@ class LoanService
             $amountPaid = (float)$paymentData['amount_paid'];
             $paymentDate = Carbon::parse($paymentData['payment_date'] ?? now());
             $prepaymentMode = $paymentData['prepayment_mode'] ?? 'reduce_tenure';
+            $forceRecalculate = $paymentData['force_recalculate'] ?? false;
 
             // Find earliest pending or partial installment(s)
             $installments = LoanInstallment::where('loan_id', $loan->account_id)
@@ -92,7 +93,7 @@ class LoanService
                 // We prioritize: Penalty -> Interest -> Principal
                 $penaltyDue = 0;
                 if ($attr->penalty_enabled && $installment->status === 'overdue') {
-                    $penaltyDue = round(($installment->total_due * $attr->penalty_rate) / 100, 2);
+                    $penaltyDue = round(($installment->total_due * $attr->penalty_rate) / 100);
                 }
 
                 $interestDue = $installment->interest_due;
@@ -152,14 +153,14 @@ class LoanService
             // If there's STILL money left, it's an Extra Payment (Prepayment towards principal)
             $extraPayment = 0;
             if ($remainingPayment > 0) {
-                $extraPayment = round($remainingPayment, 2);
+                $extraPayment = round($remainingPayment);
                 $totalPrincipalPaid += $extraPayment;
                 $remainingPayment = 0;
             }
 
             // Calculate new balance after this transaction
             $totalPrincipalPaidHistorically = LoanPayment::where('loan_id', $loan->account_id)->sum('principal_component');
-            $newBalance = round($attr->principal_amount - ($totalPrincipalPaidHistorically + $totalPrincipalPaid), 2);
+            $newBalance = round($attr->principal_amount - ($totalPrincipalPaidHistorically + $totalPrincipalPaid));
 
             $paymentRecord = LoanPayment::create([
                 'loan_id' => $loan->account_id,
@@ -184,7 +185,7 @@ class LoanService
             ]);
 
             // Handle Prepayment Schedule Regeneration
-            if ($extraPayment > 0 && $newBalance > 0) {
+            if (($extraPayment > 0 || $forceRecalculate) && $newBalance > 0) {
                 // Get the last installment number that is actually marked 'paid'
                 $lastPaidInst = LoanInstallment::where('loan_id', $loan->account_id)
                     ->where('status', 'paid')
@@ -203,6 +204,27 @@ class LoanService
 
             return $paymentRecord;
         });
+    }
+
+    /**
+     * Recalculate future installments without creating a payment record.
+     */
+    public function recalculateFutureSchedule(Account $loan, string $mode = 'reduce_tenure', $referenceDate = null): void
+    {
+        $loan->loadMissing('loanAttributes');
+
+        $newBalance = (float) $loan->current_balance;
+        if ($newBalance <= 0) {
+            return;
+        }
+
+        $lastPaidInst = LoanInstallment::where('loan_id', $loan->account_id)
+            ->where('status', 'paid')
+            ->max('installment_no') ?? 0;
+
+        $referenceDate = $referenceDate ? Carbon::parse($referenceDate) : now();
+
+        $this->recalculateSchedule($loan, $newBalance, $lastPaidInst, $mode, $referenceDate);
     }
 
     /**
@@ -249,7 +271,7 @@ class LoanService
                 } else {
                     $emi = $newBalance / $remainingTenure;
                 }
-                $attr->emi_amount = round($emi, 2);
+                $attr->emi_amount = round($emi);
                 \App\Models\LoanAttribute::where('loan_id', $loan->account_id)->update(['emi_amount' => $attr->emi_amount]);
             }
         }

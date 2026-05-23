@@ -158,8 +158,14 @@
                             </div>
                             <div class="dropdown-inner">
                                 <ul class="link-list">
-                                    <li><a href="{{ route('logout') }}"><em class="icon ni ni-signout"></em><span>Sign
-                                                out</span></a></li>
+                                    <li>
+                                        <form method="POST" action="{{ route('logout') }}">
+                                            @csrf
+                                            <button type="submit" class="btn btn-link p-0 text-start text-decoration-none">
+                                                <em class="icon ni ni-signout"></em><span>Sign out</span>
+                                            </button>
+                                        </form>
+                                    </li>
                                 </ul>
                             </div>
                         </div>

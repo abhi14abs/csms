@@ -163,7 +163,10 @@
                         @else
                             <a href="{{ route('member.dashboard') }}" class="btn-primary">Member Dashboard</a>
                         @endif
-                        <a href="{{ route('logout') }}" class="btn-ghost">Sign out</a>
+                        <form method="POST" action="{{ route('logout') }}" style="display:inline;">
+                            @csrf
+                            <button type="submit" class="btn-ghost" style="cursor:pointer;">Sign out</button>
+                        </form>
                     @else
                         <a href="{{ route('login') }}" class="btn-primary">Log in</a>
                     @endauth

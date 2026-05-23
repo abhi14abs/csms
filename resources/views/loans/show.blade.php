@@ -119,7 +119,7 @@
             </div>
             <div class="card card-bordered card-preview">
                 <div class="card-inner">
-                    <table class="datatable-init-export wrap table" data-export-title="Export">
+                    <table class="datatable-init-export wrap table" data-export-title="Export" data-order="[]">
                         <thead class="table-light">
                             <tr>
                                 <th>Payment Date</th>

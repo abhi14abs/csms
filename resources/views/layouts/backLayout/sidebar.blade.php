@@ -69,6 +69,12 @@
                                 <span class="nk-menu-text">Process Batch</span>
                             </a>
                         </li>
+                        <li class="nk-menu-item">
+                            <a href="{{ route('admin.historical-import') }}" class="nk-menu-link">
+                                <span class="nk-menu-icon"><em class="icon ni ni-file-xls"></em></span>
+                                <span class="nk-menu-text">Historical Import</span>
+                            </a>
+                        </li>
                         <li class="nk-menu-item has-sub">
                             <a href="#" class="nk-menu-link nk-menu-toggle">
                                 <span class="nk-menu-icon"><em class="icon ni ni-users"></em></span>
@@ -86,6 +92,10 @@
                                 <li class="nk-menu-item">
                                     <a href="{{ route('admin.members.create-login') }}" class="nk-menu-link"><span
                                             class="nk-menu-text">Create Login</span></a>
+                                </li>
+                                <li class="nk-menu-item">
+                                    <a href="{{ route('admin.ledger.index') }}" class="nk-menu-link"><span
+                                            class="nk-menu-text">Member Ledger & Audit</span></a>
                                 </li>
                             </ul>
                         </li>

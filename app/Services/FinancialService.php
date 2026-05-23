@@ -106,12 +106,34 @@ class FinancialService
                 }
 
                 $share = $member->accounts()->where('account_type', 'SHARE')->lockForUpdate()->first();
+                $savings = $member->accounts()->where('account_type', 'SAVINGS')->lockForUpdate()->first();
+
                 if (!$share) {
                     $share = Account::create(["employee_id" => $member->id, 'account_type' => 'SHARE', 'opened_date' => Carbon::now(), 'status' => 'Active']);
                 }
+                if (!$savings) {
+                    $savings = Account::create(["employee_id" => $member->id, 'account_type' => 'SAVINGS', 'opened_date' => Carbon::now(), 'status' => 'Active']);
+                }
 
-                Transaction::create(['account_id' => $share->account_id, 'tx_date' => $paymentDate, 'amount' => $shareAmount, 'tx_type' => 'CREDIT', 'category' => 'SUBSCRIPTION', 'description' => 'Batch Share Sub']);
-                $share->increment('current_balance', $shareAmount);
+                $shareBalance = $share->current_balance;
+
+                if ($shareBalance >= 10000) {
+                    Transaction::create(['account_id' => $savings->account_id, 'tx_date' => $paymentDate, 'amount' => $shareAmount, 'tx_type' => 'CREDIT', 'category' => 'SUBSCRIPTION', 'description' => 'Batch Sub (Diversion)']);
+                    $savings->increment('current_balance', $shareAmount);
+                } else {
+                    $gap = 10000 - $shareBalance;
+                    if ($shareAmount <= $gap) {
+                        Transaction::create(['account_id' => $share->account_id, 'tx_date' => $paymentDate, 'amount' => $shareAmount, 'tx_type' => 'CREDIT', 'category' => 'SUBSCRIPTION', 'description' => 'Batch Share Sub']);
+                        $share->increment('current_balance', $shareAmount);
+                    } else {
+                        Transaction::create(['account_id' => $share->account_id, 'tx_date' => $paymentDate, 'amount' => $gap, 'tx_type' => 'CREDIT', 'category' => 'SUBSCRIPTION', 'description' => 'Batch Share (Split)']);
+                        $share->increment('current_balance', $gap);
+
+                        $rest = $shareAmount - $gap;
+                        Transaction::create(['account_id' => $savings->account_id, 'tx_date' => $paymentDate, 'amount' => $rest, 'tx_type' => 'CREDIT', 'category' => 'SUBSCRIPTION', 'description' => 'Batch Share (Split-Sav)']);
+                        $savings->increment('current_balance', $rest);
+                    }
+                }
             }
 
             // 2. Process FD (Fixed Deposit)
@@ -241,6 +263,78 @@ class FinancialService
 
             DB::commit();
             return ['success' => true, 'new_loan_id' => $newLoan->account_id, 'net_disbursement' => $net];
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function processHistoricalRow(Employee $member, array $data, Carbon $transactionDate)
+    {
+        $shareAmount = (float)($data['share_amount'] ?? 0);
+        $emiAmount = (float)($data['emi_amount'] ?? 0);
+        
+        DB::beginTransaction();
+        try {
+            // 1. Process Historical Share Deduction
+            if ($shareAmount > 0) {
+                $share = $member->accounts()->where('account_type', 'SHARE')->lockForUpdate()->first();
+                $savings = $member->accounts()->where('account_type', 'SAVINGS')->lockForUpdate()->first();
+
+                if (!$share) {
+                    $share = Account::create(["employee_id" => $member->id, 'account_type' => 'SHARE', 'opened_date' => $transactionDate, 'status' => 'Active']);
+                }
+                if (!$savings) {
+                    $savings = Account::create(["employee_id" => $member->id, 'account_type' => 'SAVINGS', 'opened_date' => $transactionDate, 'status' => 'Active']);
+                }
+
+                $shareBalance = $share->current_balance;
+
+                if ($shareBalance >= 10000) {
+                    Transaction::create(['account_id' => $savings->account_id, 'tx_date' => $transactionDate, 'amount' => $shareAmount, 'tx_type' => 'CREDIT', 'category' => 'SUBSCRIPTION', 'description' => 'Historical Share (Diversion)']);
+                    $savings->increment('current_balance', $shareAmount);
+                } else {
+                    $gap = 10000 - $shareBalance;
+                    if ($shareAmount <= $gap) {
+                        Transaction::create(['account_id' => $share->account_id, 'tx_date' => $transactionDate, 'amount' => $shareAmount, 'tx_type' => 'CREDIT', 'category' => 'SUBSCRIPTION', 'description' => 'Historical Share Deduction']);
+                        $share->increment('current_balance', $shareAmount);
+                    } else {
+                        Transaction::create(['account_id' => $share->account_id, 'tx_date' => $transactionDate, 'amount' => $gap, 'tx_type' => 'CREDIT', 'category' => 'SUBSCRIPTION', 'description' => 'Historical Share (Split)']);
+                        $share->increment('current_balance', $gap);
+
+                        $rest = $shareAmount - $gap;
+                        Transaction::create(['account_id' => $savings->account_id, 'tx_date' => $transactionDate, 'amount' => $rest, 'tx_type' => 'CREDIT', 'category' => 'SUBSCRIPTION', 'description' => 'Historical Share (Split-Sav)']);
+                        $savings->increment('current_balance', $rest);
+                    }
+                }
+            }
+
+            // 2. Process Historical EMI Deduction
+            if ($emiAmount > 0) {
+                $loan = $member->accounts()->where('account_type', 'LOAN')->where('status', 'Active')->lockForUpdate()->first();
+                if ($loan) {
+                    $attr = $loan->loanAttributes;
+                    if ($attr && $attr->emi_amount != $emiAmount) {
+                        $attr->emi_amount = $emiAmount;
+                        $attr->save();
+                    }
+
+                    $loanService = app(\App\Services\LoanService::class);
+                    $loanService->processPayment($loan, [
+                        'payment_date' => $transactionDate->format('Y-m-d'),
+                        'amount_paid' => $emiAmount,
+                        'prepayment_mode' => 'reduce_tenure',
+                        'force_recalculate' => true
+                    ]);
+                } else {
+                    // It's possible historical records don't have an active loan. We can just log it or skip.
+                    // For now, if there is an EMI but no active loan, we skip or we can throw. Throwing might break the batch.
+                    throw new \Exception("No active loan found for Historical EMI payment.");
+                }
+            }
+
+            DB::commit();
+            return ['success' => true];
         } catch (\Exception $e) {
             DB::rollBack();
             return ['success' => false, 'message' => $e->getMessage()];

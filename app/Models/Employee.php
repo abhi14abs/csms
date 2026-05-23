@@ -70,7 +70,8 @@ class Employee extends Model
         'apar_hod',
         '2023_2024',
         '2024_2025',
-        'karmayogi_certificate_completed'
+        'karmayogi_certificate_completed',
+        'monthly_subscription'
     ];
 
     public function accounts()
@@ -91,5 +92,32 @@ class Employee extends Model
     public function designation()
     {
         return $this->belongsTo(Designation::class, 'designationAtPresent', 'id');
+    }
+
+    public function getRetirementFlagAttribute()
+    {
+        if (!$this->dateOfRetirement) {
+            return null;
+        }
+
+        $now = \Carbon\Carbon::now()->startOfDay();
+        $retirementDate = \Carbon\Carbon::parse($this->dateOfRetirement)->startOfDay();
+        
+        $daysLeft = $now->diffInDays($retirementDate, false);
+
+        if ($daysLeft < 0) {
+            return ['type' => 'dark', 'text' => 'Retired'];
+        }
+
+        $monthsLeft = $now->floatDiffInMonths($retirementDate);
+
+        if ($monthsLeft <= 3.0) {
+            $monthsText = ceil($monthsLeft) == 1 ? '1 Month' : ceil($monthsLeft) . ' Months';
+            return ['type' => 'danger', 'text' => 'Retiring in ' . $monthsText];
+        } elseif ($monthsLeft <= 6.0) {
+            return ['type' => 'warning', 'text' => 'Retiring in ' . ceil($monthsLeft) . ' Months'];
+        }
+
+        return null;
     }
 }
