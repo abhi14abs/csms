@@ -69,9 +69,12 @@ Route::middleware([Authenticate::class, AdminMiddleware::class])->prefix('admin'
     // Member Ledger & Audit
     Route::prefix('ledger')->name('admin.ledger.')->group(function () {
         Route::get('/', [\App\Http\Controllers\MemberLedgerController::class, 'index'])->name('index');
+        Route::get('/overview', [\App\Http\Controllers\MemberLedgerController::class, 'overview'])->name('overview');
+        Route::post('/overview/data', [\App\Http\Controllers\MemberLedgerController::class, 'getOverviewData'])->name('overview.data');
         Route::post('/data', [\App\Http\Controllers\MemberLedgerController::class, 'getMemberData'])->name('data');
         Route::post('/update-month', [\App\Http\Controllers\MemberLedgerController::class, 'updateMonthData'])->name('update-month');
         Route::post('/settle-loan', [\App\Http\Controllers\MemberLedgerController::class, 'settleLoan'])->name('settle-loan');
+        Route::post('/withdraw-savings', [\App\Http\Controllers\MemberLedgerController::class, 'withdrawSavings'])->name('withdraw-savings');
         Route::post('/audit-year', [\App\Http\Controllers\MemberLedgerController::class, 'auditFinancialYear'])->name('audit-year');
         Route::post('/lock-month', [\App\Http\Controllers\MemberLedgerController::class, 'lockMonth'])->name('lock-month');
     });

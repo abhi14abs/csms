@@ -97,6 +97,10 @@
                                     <a href="{{ route('admin.ledger.index') }}" class="nk-menu-link"><span
                                             class="nk-menu-text">Member Ledger & Audit</span></a>
                                 </li>
+                                <li class="nk-menu-item">
+                                    <a href="{{ route('admin.ledger.overview') }}" class="nk-menu-link"><span
+                                            class="nk-menu-text">Overview</span></a>
+                                </li>
                             </ul>
                         </li>
                         <li class="nk-menu-item has-sub">

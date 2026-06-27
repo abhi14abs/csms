@@ -43,6 +43,9 @@
                     <button type="button" class="btn btn-warning shadow-sm me-2" id="btn-settle-loan" style="display: none;" data-bs-toggle="modal" data-bs-target="#settleModal">
                         <em class="icon ni ni-wallet-out"></em><span>Settle / Pay Loan</span>
                     </button>
+                    <button type="button" class="btn btn-secondary shadow-sm me-2" id="btn-withdraw-savings" data-bs-toggle="modal" data-bs-target="#withdrawModal">
+                        <em class="icon ni ni-money"></em><span>Withdraw Savings</span>
+                    </button>
                     <button type="button" class="btn btn-primary shadow-sm" data-bs-toggle="modal" data-bs-target="#auditModal">
                         <em class="icon ni ni-check-circle-cut"></em><span>Mark FY as Audited</span>
                     </button>
@@ -126,7 +129,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group">
                                 <label class="form-label" for="edit_share_sub">Share Subscription</label>
                                 <div class="form-control-wrap">
@@ -134,11 +137,19 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group">
-                                <label class="form-label" for="edit_savings_cont">Savings Contribution</label>
+                                <label class="form-label" for="edit_savings_cont">Savings Contrib</label>
                                 <div class="form-control-wrap">
                                     <input type="number" class="form-control" id="edit_savings_cont" name="savings_cont" step="0.01" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label class="form-label" for="edit_savings_withdrawal">Savings Withdraw</label>
+                                <div class="form-control-wrap">
+                                    <input type="number" class="form-control" id="edit_savings_withdrawal" name="savings_withdrawal" step="0.01" required value="0">
                                 </div>
                             </div>
                         </div>
@@ -206,6 +217,55 @@
 
                     <div class="form-group mt-3 text-end">
                         <button type="submit" class="btn btn-lg btn-warning">Process Payment</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Withdraw Savings Modal -->
+<div class="modal fade" id="withdrawModal" tabindex="-1">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Withdraw Savings</h5>
+                <a href="#" class="close" data-bs-dismiss="modal" aria-label="Close">
+                    <em class="icon ni ni-cross"></em>
+                </a>
+            </div>
+            <div class="modal-body">
+                <form id="withdrawForm">
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <span class="text-soft">Available Savings:</span>
+                            <h4 class="text-success" id="display_withdraw_savings_balance">₹ 0.00</h4>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label" for="withdrawal_date">Withdrawal Date</label>
+                        <div class="form-control-wrap">
+                            <input type="date" class="form-control" id="withdrawal_date" name="withdrawal_date" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="withdrawal_amount">Withdrawal Amount</label>
+                        <div class="form-control-wrap">
+                            <input type="number" class="form-control" id="withdrawal_amount" name="withdrawal_amount" step="0.01" min="0.01" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="withdraw_remark">Remark (Optional)</label>
+                        <div class="form-control-wrap">
+                            <textarea class="form-control" id="withdraw_remark" name="remark" rows="2"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-group mt-3 text-end">
+                        <button type="submit" class="btn btn-lg btn-secondary">Process Withdrawal</button>
                     </div>
                 </form>
             </div>
@@ -367,6 +427,7 @@
                             data-extra="${row.emi_extra}"
                             data-share="${row.share_sub}"
                             data-sav="${row.savings_cont}"
+                            data-withdraw="${row.savings_withdrawal}"
                             data-remark="${row.remark || ''}"
                             title="Edit Record"><em class="icon ni ni-edit"></em></button>
                         <button class="btn btn-sm btn-icon btn-warning lock-month-btn" 
@@ -386,7 +447,11 @@
                         <td class="text-end text-warning">₹ ${parseFloat(row.emi_extra).toFixed(2)}</td>
                         <td class="text-end fw-bold">₹ ${parseFloat(row.emi_total).toFixed(2)}</td>
                         <td class="text-end text-success">₹ ${parseFloat(row.share_sub).toFixed(2)}</td>
-                        <td class="text-end text-info">₹ ${parseFloat(row.savings_cont).toFixed(2)}</td>
+                        <td class="text-end text-info">
+                            ${parseFloat(row.savings_cont) > 0 ? `<div>₹ ${parseFloat(row.savings_cont).toFixed(2)}</div>` : ''}
+                            ${parseFloat(row.savings_withdrawal) > 0 ? `<div class="text-danger">-₹ ${parseFloat(row.savings_withdrawal).toFixed(2)}</div>` : ''}
+                            ${parseFloat(row.savings_cont) == 0 && parseFloat(row.savings_withdrawal) == 0 ? '₹ 0.00' : ''}
+                        </td>
                         <td class="text-end fw-bold">₹ ${parseFloat(row.remaining_loan).toFixed(2)}</td>
                         <td class="small text-soft">${row.remark || '-'}</td>
                         <td class="text-center">${statusBadge}</td>
@@ -451,6 +516,7 @@
             let extra = $(this).data('extra');
             let share = $(this).data('share');
             let sav = $(this).data('sav');
+            let withdraw = $(this).data('withdraw');
             let remark = $(this).data('remark');
 
             $('#edit_employee_id').val(currentEmployeeId);
@@ -461,6 +527,7 @@
             $('#edit_emi_extra').val(extra);
             $('#edit_share_sub').val(share);
             $('#edit_savings_cont').val(sav);
+            $('#edit_savings_withdrawal').val(withdraw);
             $('#edit_remark').val(remark);
 
             $('#editModal').modal('show');
@@ -596,6 +663,62 @@
                         },
                         complete: function() {
                             btn.prop('disabled', false).text('Process Payment');
+                        }
+                    });
+                }
+            });
+        });
+
+        // Setup Withdraw Modal
+        $('#withdrawModal').on('show.bs.modal', function() {
+            $('#display_withdraw_savings_balance').text('₹ ' + parseFloat(currentSavingsBal).toFixed(2));
+            $('#withdrawal_amount').attr('max', currentSavingsBal).val('');
+            $('#withdrawal_date').val(new Date().toISOString().split('T')[0]); // Default to today
+            $('#withdraw_remark').val('');
+        });
+
+        // Submit Withdraw Form
+        $('#withdrawForm').on('submit', function(e) {
+            e.preventDefault();
+            let btn = $(this).find('button[type="submit"]');
+            
+            let amt = parseFloat($('#withdrawal_amount').val()) || 0;
+
+            if (amt <= 0 || amt > currentSavingsBal) {
+                Swal.fire('Warning', 'Invalid withdrawal amount or insufficient balance.', 'warning');
+                return;
+            }
+
+            Swal.fire({
+                title: 'Confirm Withdrawal',
+                text: `You are withdrawing ₹${amt.toFixed(2)} from savings.`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Yes, Withdraw!'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...');
+                    
+                    $.ajax({
+                        url: '{{ route('admin.ledger.withdraw-savings') }}',
+                        method: 'POST',
+                        data: $(this).serialize() + '&_token={{ csrf_token() }}&employee_id=' + currentEmployeeId,
+                        success: function(res) {
+                            if(res.success) {
+                                $('#withdrawModal').modal('hide');
+                                Swal.fire('Successful!', res.message, 'success');
+                                loadMemberData(currentEmployeeId);
+                            } else {
+                                Swal.fire('Error', res.message, 'error');
+                            }
+                        },
+                        error: function() {
+                            Swal.fire('Error', 'Server Error', 'error');
+                        },
+                        complete: function() {
+                            btn.prop('disabled', false).text('Process Withdrawal');
                         }
                     });
                 }

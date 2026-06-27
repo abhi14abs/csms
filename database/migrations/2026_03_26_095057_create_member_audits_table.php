@@ -11,14 +11,16 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('member_audits', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('employee_id');
-            $table->string('financial_year');
-            $table->unsignedBigInteger('audited_by');
-            $table->text('remark')->nullable();
-            $table->timestamps();
-        });
+        if (!Schema::hasTable('member_audits')) {
+            Schema::create('member_audits', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('employee_id');
+                $table->string('financial_year');
+                $table->unsignedBigInteger('audited_by');
+                $table->text('remark')->nullable();
+                $table->timestamps();
+            });
+        }
     }
 
     /**

@@ -97,6 +97,7 @@ class MemberLedgerController extends Controller
             // Calculate amounts for the date
             $dateShareSub = 0;
             $dateSavSub = 0;
+            $dateSavWithdrawal = 0;
 
             foreach ($dateTxs as $tx) {
                 if ($tx->tx_type === 'CREDIT' || $tx->tx_type === 'Credit') {
@@ -112,6 +113,9 @@ class MemberLedgerController extends Controller
                         $runningShares -= $tx->amount;
                     } elseif ($tx->account_id == $savingsAccountId) {
                         $runningSavings -= $tx->amount;
+                        if ($tx->category === 'WITHDRAWAL') {
+                            $dateSavWithdrawal += $tx->amount;
+                        }
                     }
                 }
             }
@@ -146,6 +150,7 @@ class MemberLedgerController extends Controller
                 'emi_total' => round($dateTotalEmi),
                 'share_sub' => round($dateShareSub),
                 'savings_cont' => round($dateSavSub),
+                'savings_withdrawal' => round($dateSavWithdrawal),
                 'total_saving' => round($runningSavings),
                 'total_shares' => round($runningShares),
                 'remaining_loan' => round($runningLoanBalance)
@@ -171,6 +176,7 @@ class MemberLedgerController extends Controller
             'emi_extra' => 'required|numeric',
             'share_sub' => 'required|numeric',
             'savings_cont' => 'required|numeric',
+            'savings_withdrawal' => 'required|numeric|min:0',
             'remark' => 'nullable|string'
         ]);
 
@@ -181,6 +187,7 @@ class MemberLedgerController extends Controller
         $newExtra = (float) $request->input('emi_extra');
         $newShare = (float) $request->input('share_sub');
         $newSav = (float) $request->input('savings_cont');
+        $newSavWithdrawal = (float) $request->input('savings_withdrawal');
         $remark = $request->input('remark');
 
         $member = Employee::with('accounts')->find($employeeId);
@@ -269,6 +276,38 @@ class MemberLedgerController extends Controller
                         ]);
                     }
                     $savAcc->current_balance += $diffSav;
+                    $savAcc->save();
+                }
+            }
+
+            // 2b. Update Savings Withdrawal
+            if ($savAcc) {
+                $dateWithdrawals = Transaction::where('account_id', $savAcc->account_id)
+                    ->where('category', 'WITHDRAWAL')
+                    ->where('tx_type', 'DEBIT')
+                    ->whereDate('tx_date', $formattedDate)
+                    ->get();
+
+                $oldWithdrawal = $dateWithdrawals->sum('amount');
+                $diffWithdrawal = $newSavWithdrawal - $oldWithdrawal;
+
+                if ($diffWithdrawal != 0) {
+                    if ($dateWithdrawals->isNotEmpty()) {
+                        $tx = $dateWithdrawals->first();
+                        $tx->amount += $diffWithdrawal;
+                        if ($remark) $tx->description .= " | Edit: $remark";
+                        $tx->save();
+                    } else {
+                        Transaction::create([
+                            'account_id' => $savAcc->account_id,
+                            'tx_date' => $formattedDate,
+                            'amount' => $newSavWithdrawal,
+                            'tx_type' => 'DEBIT',
+                            'category' => 'WITHDRAWAL',
+                            'description' => 'Manual Savings Withdrawal' . ($remark ? " | Remark: $remark" : '')
+                        ]);
+                    }
+                    $savAcc->current_balance -= $diffWithdrawal;
                     $savAcc->save();
                 }
             }
@@ -497,6 +536,70 @@ class MemberLedgerController extends Controller
         }
     }
 
+    public function withdrawSavings(Request $request)
+    {
+        $request->validate([
+            'employee_id' => 'required',
+            'withdrawal_date' => 'required|date',
+            'withdrawal_amount' => 'required|numeric|min:0.01',
+            'remark' => 'nullable|string'
+        ]);
+
+        $employeeId = $request->input('employee_id');
+        $dateStr = $request->input('withdrawal_date');
+        $amount = (float) $request->input('withdrawal_amount');
+        $remark = $request->input('remark');
+
+        $member = Employee::with('accounts')->find($employeeId);
+        if (!$member) return response()->json(['success' => false, 'message' => 'Member not found']);
+
+        // Check if year or month is audited/locked
+        $dateCarbon = Carbon::parse($dateStr);
+        $formattedDate = $dateCarbon->format('Y-m-d');
+        $monthKey = $dateCarbon->format('Y-m');
+        $year = $dateCarbon->year;
+        $fyStr = $dateCarbon->month >= 4 ? $year . '-' . ($year + 1) : ($year - 1) . '-' . $year;
+
+        $isAudited = MemberAudit::where('employee_id', $employeeId)
+            ->where(function($q) use ($fyStr, $monthKey) {
+                $q->where('financial_year', $fyStr)->whereNull('month')
+                  ->orWhere('month', $monthKey);
+            })->exists();
+
+        if ($isAudited) {
+            return response()->json(['success' => false, 'message' => 'Cannot insert withdrawal for a locked/audited month or financial year.']);
+        }
+
+        $savAcc = $member->accounts->where('account_type', 'SAVINGS')->first();
+        if (!$savAcc) {
+            return response()->json(['success' => false, 'message' => 'No savings account found.']);
+        }
+
+        if ($savAcc->current_balance < $amount) {
+            return response()->json(['success' => false, 'message' => 'Insufficient savings balance. Available: ₹' . $savAcc->current_balance]);
+        }
+
+        DB::beginTransaction();
+        try {
+            Transaction::create([
+                'account_id' => $savAcc->account_id,
+                'tx_date' => $formattedDate,
+                'amount' => $amount,
+                'tx_type' => 'DEBIT',
+                'category' => 'WITHDRAWAL',
+                'description' => 'Savings Withdrawal' . ($remark ? " | Remark: $remark" : '')
+            ]);
+            $savAcc->current_balance -= $amount;
+            $savAcc->save();
+
+            DB::commit();
+            return response()->json(['success' => true, 'message' => 'Savings withdrawn successfully.']);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
     public function auditFinancialYear(Request $request)
     {
         $request->validate([
@@ -521,5 +624,149 @@ class MemberLedgerController extends Controller
         ]);
 
         return response()->json(['success' => true, 'message' => 'Financial year marked as audited.']);
+    }
+
+    public function overview()
+    {
+        $years = [];
+        $currentYear = date('Y');
+        $currentMonth = date('m');
+        $startYear = $currentMonth >= 4 ? $currentYear : $currentYear - 1;
+        
+        for ($y = 2020; $y <= $startYear; $y++) {
+            $years[] = $y . '-' . ($y + 1);
+        }
+        $years = array_reverse($years);
+
+        return view('admin.ledger.overview', compact('years', 'startYear'));
+    }
+
+    public function getOverviewData(Request $request)
+    {
+        $fy = $request->input('financial_year');
+        if (!$fy) {
+            return response()->json(['success' => false, 'message' => 'Financial Year required']);
+        }
+
+        $parts = explode('-', $fy);
+        if (count($parts) !== 2) {
+            return response()->json(['success' => false, 'message' => 'Invalid Financial Year format']);
+        }
+
+        $startYear = $parts[0];
+        $endYear = $parts[1];
+
+        $startDate = $startYear . '-04-01';
+        $endDate = $endYear . '-03-31';
+
+        // If it's the current running FY, we limit the end date to today to not count future transactions if any
+        if (Carbon::today()->between(Carbon::parse($startDate), Carbon::parse($endDate))) {
+            $endDate = Carbon::today()->format('Y-m-d');
+        }
+
+        $members = Employee::where('is_society_member', 'YES')
+            ->with(['accounts.transactions', 'accounts.loanAttributes'])
+            ->get();
+
+        $audits = MemberAudit::where('financial_year', $fy)->whereNull('month')->get()->keyBy('employee_id');
+        $monthlyAudits = MemberAudit::where('financial_year', $fy)->whereNotNull('month')->get()->groupBy('employee_id');
+
+        $data = [];
+
+        foreach ($members as $member) {
+            $shareAcc = $member->accounts->where('account_type', 'SHARE')->first();
+            $savAcc = $member->accounts->where('account_type', 'SAVINGS')->first();
+            
+            // Find an active loan for this FY
+            $loanAccs = $member->accounts->where('account_type', 'LOAN')->where('opened_date', '<=', $endDate);
+            $loanAcc = null;
+            $loanTaken = 0;
+            $loanRemaining = 0;
+            $emi = 0;
+
+            foreach($loanAccs as $lAcc) {
+                $loanCredits = $lAcc->transactions->where('tx_date', '<=', $endDate)->where('tx_type', 'CREDIT')->sum('amount');
+                $lTaken = $lAcc->loanAttributes->principal_amount ?? 0;
+                $rem = $lTaken - $loanCredits;
+                
+                // If it had a remaining balance > 0 OR if it was opened in this FY and paid off in the same FY, we show it
+                if ($rem > 0 || ($lAcc->opened_date >= $startDate && $lAcc->opened_date <= $endDate)) {
+                    $loanAcc = $lAcc;
+                    $loanTaken = $lTaken;
+                    $loanRemaining = $rem > 0 ? $rem : 0;
+                    $emi = $lAcc->loanAttributes->emi_amount ?? 0;
+                    break;
+                }
+            }
+
+            $totalShares = 0;
+            $openingSavings = 0;
+            $closingSavings = 0;
+            $runningMonthlyContribution = $member->monthly_subscription ?? 0;
+
+            $fdTotal = 0;
+            $withdrawals = 0;
+
+            if ($shareAcc) {
+                $totalShares = $shareAcc->transactions->where('tx_date', '<=', $endDate)->where('tx_type', 'CREDIT')->sum('amount') 
+                             - $shareAcc->transactions->where('tx_date', '<=', $endDate)->where('tx_type', 'DEBIT')->sum('amount');
+            }
+
+            if ($savAcc) {
+                // Opening
+                $openingCredits = $savAcc->transactions->where('tx_date', '<', $startDate)->where('tx_type', 'CREDIT')->sum('amount');
+                $openingDebits = $savAcc->transactions->where('tx_date', '<', $startDate)->where('tx_type', 'DEBIT')->sum('amount');
+                $openingSavings = $openingCredits - $openingDebits;
+
+                // Closing
+                $closingCredits = $savAcc->transactions->where('tx_date', '<=', $endDate)->where('tx_type', 'CREDIT')->sum('amount');
+                $closingDebits = $savAcc->transactions->where('tx_date', '<=', $endDate)->where('tx_type', 'DEBIT')->sum('amount');
+                $closingSavings = $closingCredits - $closingDebits;
+
+                // Withdrawals in FY
+                $withdrawals = $savAcc->transactions->whereBetween('tx_date', [$startDate, $endDate])
+                                    ->where('tx_type', 'DEBIT')
+                                    ->where('category', 'WITHDRAWAL')
+                                    ->sum('amount');
+
+                // Fixed Deposits in FY (assuming category FIXED_DEPOSIT)
+                $fdTotal = $savAcc->transactions->whereBetween('tx_date', [$startDate, $endDate])
+                                    ->where('category', 'FIXED_DEPOSIT')
+                                    ->sum('amount');
+            }
+
+            // Also check for a dedicated FD account if it exists
+            $fdAcc = $member->accounts->where('account_type', 'FD')->first();
+            if ($fdAcc) {
+                $fdTotal += $fdAcc->transactions->whereBetween('tx_date', [$startDate, $endDate])->where('tx_type', 'CREDIT')->sum('amount');
+            }
+
+            $status = 'Unlocked';
+            if (isset($audits[$member->id])) {
+                $status = 'FY Audited';
+            } elseif (isset($monthlyAudits[$member->id])) {
+                $status = 'Partially Locked';
+            }
+
+            $data[] = [
+                'empCode' => $member->empCode,
+                'name' => $member->name,
+                'total_shares' => round($totalShares),
+                'opening_savings' => round($openingSavings),
+                'total_savings' => round($closingSavings),
+                'monthly_contribution' => $runningMonthlyContribution,
+                'loan_taken' => round($loanTaken),
+                'loan_remaining' => round($loanRemaining),
+                'emi' => round($emi),
+                'fd' => round($fdTotal),
+                'withdrawals' => round($withdrawals),
+                'status' => $status,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $data
+        ]);
     }
 }
