@@ -89,6 +89,26 @@
             max-width: 58ch
         }
 
+        .btn-launch {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            background: linear-gradient(135deg, #ffe066 0%, #ffd700 50%, #cca01d 100%);
+            color: #1e0902;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 800;
+            box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4);
+            transition: all 0.25s ease;
+        }
+
+        .btn-launch:hover {
+            transform: translateY(-2px) scale(1.03);
+            box-shadow: 0 8px 25px rgba(255, 215, 0, 0.6);
+            color: #000;
+        }
+
         .btn-primary {
             display: inline-block;
             padding: 10px 16px;
@@ -149,13 +169,21 @@
     <div class="hero-viewport">
         <div class="hero-card">
             <div class="hero-left">
-                <span class="kicker">Textile Committee</span>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+                    <span class="kicker">Textile Committee</span>
+                    <a href="{{ route('launch') }}" style="font-size:12px;text-decoration:none;color:#ffd700;background:rgba(255,215,0,0.12);border:1px solid rgba(255,215,0,0.35);padding:4px 10px;border-radius:999px;font-weight:700;">
+                        ✨ Launch Ceremony Mode
+                    </a>
+                </div>
                 <h1 class="title">Cooperative Society Management System</h1>
                 <p class="lead">Centralize member subscriptions, payroll deductions, savings and structured loans for
                     cooperative textile societies. Track disbursals, manage sureties and run monthly batch deductions
                     with precision.</p>
 
                 <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">
+                    <a href="{{ route('launch') }}" class="btn-launch">
+                        <span>✨ Inauguration Screen</span>
+                    </a>
                     @auth
                         @php $user = Illuminate\Support\Facades\Auth::user(); @endphp
                         @if ($user && $user->is_admin)

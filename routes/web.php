@@ -13,6 +13,14 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::get('/launch', function () {
+    return view('launch');
+})->name('launch');
+
+Route::get('/inauguration', function () {
+    return view('launch');
+})->name('inauguration');
+
 // Authentication routes (simple custom handlers)
 Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);

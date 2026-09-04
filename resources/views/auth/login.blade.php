@@ -139,6 +139,7 @@
             <button class="btn-primary">Login</button>
             <div class="footer-link">
                 <p>Forgot your password? <a href="#">Click Here</a></p>
+                <p style="margin-top: 10px;"><a href="{{ route('launch') }}" style="color: #ffe066; text-decoration: none; font-weight: 600;">✨ Grand Launch Ceremony</a></p>
             </div>
         </form>
     </div>
